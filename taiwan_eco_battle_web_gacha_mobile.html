@@ -20,6 +20,7 @@
     </div>
     <div class="resources">
       <div class="badge gold">🎫 抽卡券：<span id="tickets">3</span></div>
+      <div class="badge">⏳ 下一包：<span id="ticketTimer">15:00</span></div>
       <div class="badge">📖 圖鑑：<span id="ownedCount">0</span>/<span id="totalCount">120</span></div>
     </div>
   </div>
@@ -37,6 +38,7 @@
       </div>
       <div class="actions">
         <button class="btn blue" onclick="showPokedex()">圖鑑</button>
+        <button class="btn green" onclick="showChallenges()">棲地挑戰</button>
         <button class="btn green" onclick="addTicket()">領取測試券</button>
         <button class="btn purple full" onclick="preloadAllImages()">預先抓取 120 張 Wikimedia 圖片</button>
         <button class="btn full" onclick="exportSave()">匯出收藏 JSON</button>
@@ -105,6 +107,14 @@
   </div>
 </div>
 
+<div class="modal" id="challengeModal">
+  <div class="modal-box">
+    <div class="modal-head"><h2>棲地挑戰｜初版可玩循環</h2><button class="close" onclick="closeModal('challengeModal')">×</button></div>
+    <div class="gacha-hint">從已收藏物種中自動編成 5 張卡，計算生態穩定度。每個棲地首次達標會獲得 1 張抽卡券。</div>
+    <div class="challenge-grid" id="challengeGrid"></div>
+  </div>
+</div>
+
 <div class="modal" id="speciesDetailModal">
   <div class="modal-box species-detail-box">
     <div class="modal-head"><h2>生物百科詳情</h2><button class="close" onclick="closeModal('speciesDetailModal')">×</button></div>
@@ -118,19 +128,45 @@ const FALLBACK_BY_CLASS = {
   "昆蟲綱":"🦋", "鳥綱":"🐦", "哺乳綱":"🐾", "兩生綱":"🐸", "爬蟲綱":"🦎", "條鰭魚綱":"🐟"
 };
 const PACK_CLASS = { PACK_HIGHLAND:"high", PACK_LOWLAND:"low", PACK_WATER:"water" };
-let state = loadState();
+const TICKET_INTERVAL_MS = 15 * 60 * 1000;
+const HABITAT_CHALLENGES = [
+  { id:"highland", packId:"PACK_HIGHLAND", habitat:"高海拔", title:"高山之巔", target:70, text:"讓高海拔物種組成穩定的山林群落。" },
+  { id:"lowland", packId:"PACK_LOWLAND", habitat:"低海拔", title:"淺山魅影", target:70, text:"讓淺山物種在人類活動邊界維持韌性。" },
+  { id:"water", packId:"PACK_WATER", habitat:"水域", title:"森之水脈", target:70, text:"讓水域與溪流物種串起完整食物網。" }
+];
+let state = normalizeState(loadState());
 let currentView = 'recent';
 let dexClassFilter = '';
 let imageCache = loadImageCache();
 document.getElementById('totalCount').textContent = CARD_DB.length;
 updateHeader();
 renderMainView();
-window.addEventListener('DOMContentLoaded', () => { setTimeout(startBackgroundImagePreload, 600); });
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(startBackgroundImagePreload, 600);
+  updateTicketTimer();
+  setInterval(updateTicketTimer, 1000);
+});
 
+function defaultState(){
+  return { tickets:3, ownedIds:[], recentIds:[], lastTicketAt:Date.now(), challenges:{} };
+}
+function normalizeState(saved){
+  const fresh = defaultState();
+  const data = saved && typeof saved === 'object' ? saved : {};
+  return {
+    ...fresh,
+    ...data,
+    tickets:Number.isFinite(data.tickets) ? data.tickets : fresh.tickets,
+    ownedIds:Array.isArray(data.ownedIds) ? data.ownedIds : [],
+    recentIds:Array.isArray(data.recentIds) ? data.recentIds : [],
+    lastTicketAt:Number.isFinite(data.lastTicketAt) ? data.lastTicketAt : fresh.lastTicketAt,
+    challenges:data.challenges && typeof data.challenges === 'object' ? data.challenges : {}
+  };
+}
 function loadState(){
   const raw = localStorage.getItem('taiwanEcoGachaWikiState_v1');
   if(raw) return JSON.parse(raw);
-  return { tickets:3, ownedIds:[], recentIds:[] };
+  return defaultState();
 }
 function saveState(){ localStorage.setItem('taiwanEcoGachaWikiState_v1', JSON.stringify(state)); }
 function loadImageCache(){
@@ -139,10 +175,36 @@ function loadImageCache(){
 }
 function saveImageCache(){ localStorage.setItem('taiwanEcoWikimediaImageCache_v1', JSON.stringify(imageCache)); }
 function updateHeader(){
+  claimTimedTickets();
   document.getElementById('tickets').textContent = state.tickets;
   document.getElementById('ownedCount').textContent = new Set(state.ownedIds).size;
+  renderTicketTimer();
 }
 function addTicket(){ state.tickets++; saveState(); updateHeader(); }
+function claimTimedTickets(){
+  const now = Date.now();
+  if(!Number.isFinite(state.lastTicketAt)) state.lastTicketAt = now;
+  const elapsed = now - state.lastTicketAt;
+  if(elapsed < TICKET_INTERVAL_MS) return;
+  const earned = Math.floor(elapsed / TICKET_INTERVAL_MS);
+  state.tickets += earned;
+  state.lastTicketAt += earned * TICKET_INTERVAL_MS;
+  saveState();
+}
+function renderTicketTimer(){
+  const el = document.getElementById('ticketTimer');
+  if(!el) return;
+  const elapsed = Math.max(0, Date.now() - state.lastTicketAt);
+  const remain = Math.max(0, TICKET_INTERVAL_MS - (elapsed % TICKET_INTERVAL_MS));
+  const min = String(Math.floor(remain / 60000)).padStart(2,'0');
+  const sec = String(Math.floor((remain % 60000) / 1000)).padStart(2,'0');
+  el.textContent = `${min}:${sec}`;
+}
+function updateTicketTimer(){
+  claimTimedTickets();
+  document.getElementById('tickets').textContent = state.tickets;
+  renderTicketTimer();
+}
 
 function rarityWeights(){
   const r = Math.random()*100;
@@ -178,6 +240,82 @@ function openPack(packId){
 }
 function packName(packId){ return CARD_DB.find(c=>c.packId===packId)?.packName || packId; }
 function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+function showChallenges(){
+  document.getElementById('challengeModal').classList.add('show');
+  renderChallenges();
+}
+function uniqueOwnedCards(){
+  return [...new Set(state.ownedIds)].map(id=>CARD_DB.find(c=>c.speciesId===id)).filter(Boolean);
+}
+function scoreCardForChallenge(card, challenge){
+  return card.star * 8 + card.deployRequirement * 4 + (card.primaryHabitat === challenge.habitat ? 28 : 0) + (card.packId === challenge.packId ? 8 : 0);
+}
+function getChallengeTeam(challenge){
+  return uniqueOwnedCards()
+    .sort((a,b)=>scoreCardForChallenge(b, challenge) - scoreCardForChallenge(a, challenge))
+    .slice(0,5);
+}
+function calculateChallengeScore(team, challenge){
+  if(team.length === 0) return 0;
+  const habitatMatches = team.filter(c=>c.primaryHabitat === challenge.habitat).length;
+  const diversity = new Set(team.map(c=>c.className)).size;
+  const starTotal = team.reduce((sum,c)=>sum + c.star, 0);
+  return Math.min(100, Math.round(habitatMatches * 16 + diversity * 8 + starTotal * 3 + team.length * 2));
+}
+function renderChallenges(){
+  const grid = document.getElementById('challengeGrid');
+  if(!grid) return;
+  grid.innerHTML = HABITAT_CHALLENGES.map(challenge => {
+    const team = getChallengeTeam(challenge);
+    const score = calculateChallengeScore(team, challenge);
+    const saved = state.challenges[challenge.id] || {};
+    const bestScore = saved.bestScore || 0;
+    const passed = score >= challenge.target;
+    const status = saved.cleared ? '已穩定' : (passed ? '可達標' : '未達標');
+    const teamHtml = team.length
+      ? team.map(c=>`<span class="challenge-chip">${escapeHtml(c.name)}<small>${"★".repeat(c.star)}</small></span>`).join('')
+      : `<span class="small">先抽卡取得物種。</span>`;
+    return `
+      <section class="challenge-card ${PACK_CLASS[challenge.packId]}">
+        <div class="challenge-top">
+          <div>
+            <div class="eyebrow">${challenge.habitat}</div>
+            <h3>${challenge.title}</h3>
+          </div>
+          <div class="challenge-score">${score}</div>
+        </div>
+        <p>${challenge.text}</p>
+        <div class="challenge-meter"><div class="challenge-fill" style="width:${Math.min(100, score)}%"></div></div>
+        <div class="challenge-result">目標 ${challenge.target}｜最佳 ${bestScore}｜${status}</div>
+        <div class="challenge-team">${teamHtml}</div>
+        <button class="btn full" onclick="runChallenge('${challenge.id}')">自動編成挑戰</button>
+      </section>
+    `;
+  }).join('');
+}
+function runChallenge(challengeId){
+  const challenge = HABITAT_CHALLENGES.find(c=>c.id === challengeId);
+  if(!challenge) return;
+  const team = getChallengeTeam(challenge);
+  if(team.length < 5){ alert('至少需要收藏 5 張不同物種才能挑戰。'); return; }
+  const score = calculateChallengeScore(team, challenge);
+  const previous = state.challenges[challengeId] || {};
+  const cleared = score >= challenge.target;
+  const firstClear = cleared && !previous.cleared;
+  state.challenges[challengeId] = {
+    bestScore:Math.max(previous.bestScore || 0, score),
+    cleared:previous.cleared || cleared,
+    lastScore:score,
+    lastTeam:team.map(c=>c.speciesId),
+    updatedAt:new Date().toISOString()
+  };
+  if(firstClear) state.tickets++;
+  saveState();
+  updateHeader();
+  renderChallenges();
+  alert(cleared ? (firstClear ? '挑戰成功！獲得 1 張抽卡券。' : '挑戰成功！此棲地已達成過。') : '尚未達標，先抽更多符合棲地的物種吧。');
+}
 
 function setView(view, btn){
   currentView = view;
@@ -495,7 +633,7 @@ function exportSave(){
 function resetSave(){
   if(!confirm('確定重置收藏與抽卡券？圖片快取會保留。')) return;
   localStorage.removeItem('taiwanEcoGachaWikiState_v1');
-  state = loadState(); updateHeader(); renderMainView();
+  state = normalizeState(loadState()); updateHeader(); renderMainView(); renderChallenges();
 }
 </script>
 </body>
