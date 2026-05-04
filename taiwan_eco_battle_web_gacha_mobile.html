@@ -98,6 +98,7 @@
         <h3>分類群</h3>
         <div class="dex-class-list" id="dexClassList"></div>
         <div class="dex-note">點擊卡牌可打開生物百科詳情頁。灰階卡代表尚未收藏，圖片仍會嘗試從 Wikimedia 載入。</div>
+        <div class="dex-checklists" id="dexChecklists"></div>
       </aside>
       <div class="card-grid" id="pokedexGrid"></div>
     </div>
@@ -218,6 +219,7 @@ function renderPokedex(){
 
   renderDexDashboard(ownedSet);
   renderDexClassList(ownedSet);
+  renderDexChecklists();
 
   let list = [...CARD_DB];
   if(pf) list = list.filter(c=>c.packId===pf);
@@ -263,6 +265,26 @@ function renderDexClassList(ownedSet){
 function setDexClassFilter(name){
   dexClassFilter = name;
   renderPokedex();
+}
+function renderDexChecklists(){
+  const box = document.getElementById('dexChecklists');
+  if(!box) return;
+  const missingImages = CARD_DB.filter(c => !imageCache[c.speciesId]).slice(0, 8);
+  const reviewCards = CARD_DB.filter(c => c.reviewFlag && c.reviewFlag !== '無').slice(0, 8);
+  box.innerHTML = `
+    <section class="dex-checklist">
+      <h4>缺圖清單</h4>
+      ${renderDexChecklistItems(missingImages, '目前圖片皆已快取。')}
+    </section>
+    <section class="dex-checklist">
+      <h4>需複核清單</h4>
+      ${renderDexChecklistItems(reviewCards, '目前沒有標記需複核的資料。')}
+    </section>
+  `;
+}
+function renderDexChecklistItems(cards, emptyText){
+  if(cards.length === 0) return `<div class="dex-empty">${emptyText}</div>`;
+  return cards.map(c => `<button class="dex-check-item" onclick="showSpeciesDetail('${escapeAttr(c.speciesId)}')"><span>${escapeHtml(c.name)}</span><small>${escapeHtml(c.packName)} · ${escapeHtml(c.primaryHabitat)}</small></button>`).join('');
 }
 
 function renderCard(card, opts={}){
