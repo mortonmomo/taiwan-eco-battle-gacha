@@ -39,7 +39,6 @@
       <div class="actions">
         <button class="btn blue" onclick="showPokedex()">圖鑑</button>
         <button class="btn green" onclick="showChallenges()">棲地挑戰</button>
-        <button class="btn green" onclick="addTicket()">領取測試券</button>
         <button class="btn purple full" onclick="preloadAllImages()">預先抓取 120 張 Wikimedia 圖片</button>
         <button class="btn full" onclick="exportSave()">匯出收藏 JSON</button>
         <button class="btn red full" onclick="resetSave()">重置測試進度</button>
@@ -180,7 +179,6 @@ function updateHeader(){
   document.getElementById('ownedCount').textContent = new Set(state.ownedIds).size;
   renderTicketTimer();
 }
-function addTicket(){ state.tickets++; saveState(); updateHeader(); }
 function claimTimedTickets(){
   const now = Date.now();
   if(!Number.isFinite(state.lastTicketAt)) state.lastTicketAt = now;
